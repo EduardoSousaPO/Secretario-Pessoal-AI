@@ -16,7 +16,6 @@
  */
 
 import { Client } from '@notionhq/client'
-import type { PageObjectResponse, QueryDatabaseResponse } from '@notionhq/client/build/src/api-endpoints'
 
 // Singleton do cliente
 let notionClient: Client | null = null
@@ -60,15 +59,50 @@ export async function createTask(properties: TaskProperties): Promise<{ id: stri
     const client = getNotionClient()
     const databaseId = getDatabaseId()
 
-    const notionProperties = mapToNotionProperties(properties)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const notionProperties: any = {
+      Name: {
+        title: [{ text: { content: properties.Name } }]
+      }
+    }
+
+    if (properties.Status) {
+      notionProperties.Status = { select: { name: properties.Status } }
+    }
+
+    if (properties.Due) {
+      notionProperties.Due = { date: { start: properties.Due } }
+    }
+
+    if (properties.Notes) {
+      notionProperties.Notes = { rich_text: [{ text: { content: properties.Notes } }] }
+    }
+
+    if (properties.Source) {
+      notionProperties.Source = { rich_text: [{ text: { content: properties.Source } }] }
+    }
+
+    if (properties.Confidence !== undefined) {
+      notionProperties.Confidence = { number: properties.Confidence }
+    }
+
+    if (properties.Tags && properties.Tags.length > 0) {
+      notionProperties.Tags = { multi_select: properties.Tags.map(tag => ({ name: tag })) }
+    }
+
+    if (properties.Effort) {
+      notionProperties.Effort = { select: { name: properties.Effort } }
+    }
 
     const response = await client.pages.create({
       parent: { database_id: databaseId },
       properties: notionProperties
-    }) as PageObjectResponse
+    })
 
-    console.log(`Task created in Notion: ${response.url}`)
-    return { id: response.id, url: response.url }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const page = response as any
+    console.log(`Task created in Notion: ${page.url}`)
+    return { id: page.id, url: page.url }
   } catch (error) {
     console.error('Error creating task in Notion:', error)
     return null
@@ -84,88 +118,54 @@ export async function updateTask(
 ): Promise<{ id: string; url: string } | null> {
   try {
     const client = getNotionClient()
-    const notionProperties = mapToNotionProperties(properties)
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const notionProperties: any = {}
+
+    if (properties.Name) {
+      notionProperties.Name = { title: [{ text: { content: properties.Name } }] }
+    }
+
+    if (properties.Status) {
+      notionProperties.Status = { select: { name: properties.Status } }
+    }
+
+    if (properties.Due) {
+      notionProperties.Due = { date: { start: properties.Due } }
+    }
+
+    if (properties.Notes) {
+      notionProperties.Notes = { rich_text: [{ text: { content: properties.Notes } }] }
+    }
+
+    if (properties.Source) {
+      notionProperties.Source = { rich_text: [{ text: { content: properties.Source } }] }
+    }
+
+    if (properties.Confidence !== undefined) {
+      notionProperties.Confidence = { number: properties.Confidence }
+    }
+
+    if (properties.Tags && properties.Tags.length > 0) {
+      notionProperties.Tags = { multi_select: properties.Tags.map(tag => ({ name: tag })) }
+    }
+
+    if (properties.Effort) {
+      notionProperties.Effort = { select: { name: properties.Effort } }
+    }
 
     const response = await client.pages.update({
       page_id: pageId,
       properties: notionProperties
-    }) as PageObjectResponse
+    })
 
-    console.log(`Task updated in Notion: ${response.url}`)
-    return { id: response.id, url: response.url }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const page = response as any
+    console.log(`Task updated in Notion: ${page.url}`)
+    return { id: page.id, url: page.url }
   } catch (error) {
     console.error('Error updating task in Notion:', error)
     return null
-  }
-}
-
-/**
- * Busca tarefas no Notion
- */
-export async function queryTasks(params?: {
-  titleContains?: string
-  status?: string
-  limit?: number
-}): Promise<Array<{ id: string; url: string; title: string; status: string }>> {
-  try {
-    const client = getNotionClient()
-    const databaseId = getDatabaseId()
-
-    const filters: Array<{ property: string; title?: { contains: string }; select?: { equals: string } }> = []
-    
-    if (params?.titleContains) {
-      filters.push({
-        property: 'Name',
-        title: { contains: params.titleContains }
-      })
-    }
-    
-    if (params?.status) {
-      filters.push({
-        property: 'Status',
-        select: { equals: params.status }
-      })
-    }
-
-    const queryParams: Parameters<typeof client.databases.query>[0] = {
-      database_id: databaseId,
-      page_size: params?.limit || 10
-    }
-
-    if (filters.length > 0) {
-      queryParams.filter = filters.length === 1 
-        ? filters[0] 
-        : { and: filters }
-    }
-
-    const response = await client.databases.query(queryParams) as QueryDatabaseResponse
-
-    return response.results
-      .filter((page): page is PageObjectResponse => 'properties' in page)
-      .map(page => {
-        const titleProp = page.properties['Name']
-        const statusProp = page.properties['Status']
-        
-        let title = ''
-        if (titleProp && titleProp.type === 'title' && titleProp.title.length > 0) {
-          title = titleProp.title[0].plain_text
-        }
-        
-        let status = ''
-        if (statusProp && statusProp.type === 'select' && statusProp.select) {
-          status = statusProp.select.name
-        }
-
-        return {
-          id: page.id,
-          url: page.url,
-          title,
-          status
-        }
-      })
-  } catch (error) {
-    console.error('Error querying tasks in Notion:', error)
-    return []
   }
 }
 
@@ -184,31 +184,29 @@ export async function getPendingTasks(limit: number = 5): Promise<Array<{ id: st
         select: { does_not_equal: 'Concluido' }
       },
       page_size: limit
-    }) as QueryDatabaseResponse
+    })
 
-    return response.results
-      .filter((page): page is PageObjectResponse => 'properties' in page)
-      .map(page => {
-        const titleProp = page.properties['Name']
-        const statusProp = page.properties['Status']
-        
-        let title = ''
-        if (titleProp && titleProp.type === 'title' && titleProp.title.length > 0) {
-          title = titleProp.title[0].plain_text
-        }
-        
-        let status = ''
-        if (statusProp && statusProp.type === 'select' && statusProp.select) {
-          status = statusProp.select.name
-        }
+    return response.results.map(page => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = page as any
+      
+      let title = ''
+      if (p.properties?.Name?.title?.[0]?.plain_text) {
+        title = p.properties.Name.title[0].plain_text
+      }
+      
+      let status = ''
+      if (p.properties?.Status?.select?.name) {
+        status = p.properties.Status.select.name
+      }
 
-        return {
-          id: page.id,
-          url: page.url,
-          title,
-          status
-        }
-      })
+      return {
+        id: p.id,
+        url: p.url,
+        title,
+        status
+      }
+    })
   } catch (error) {
     console.error('Error fetching pending tasks:', error)
     return []
@@ -216,58 +214,60 @@ export async function getPendingTasks(limit: number = 5): Promise<Array<{ id: st
 }
 
 /**
- * Mapeia propriedades para formato da API do Notion
+ * Busca tarefas no Notion por titulo
  */
-function mapToNotionProperties(properties: Partial<TaskProperties>): Record<string, unknown> {
-  const notionProps: Record<string, unknown> = {}
+export async function queryTasks(params?: {
+  titleContains?: string
+  status?: string
+  limit?: number
+}): Promise<Array<{ id: string; url: string; title: string; status: string }>> {
+  try {
+    const client = getNotionClient()
+    const databaseId = getDatabaseId()
 
-  if (properties.Name) {
-    notionProps['Name'] = {
-      title: [{ text: { content: properties.Name } }]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const queryParams: any = {
+      database_id: databaseId,
+      page_size: params?.limit || 10
     }
-  }
 
-  if (properties.Status) {
-    notionProps['Status'] = {
-      select: { name: properties.Status }
+    if (params?.titleContains) {
+      queryParams.filter = {
+        property: 'Name',
+        title: { contains: params.titleContains }
+      }
+    } else if (params?.status) {
+      queryParams.filter = {
+        property: 'Status',
+        select: { equals: params.status }
+      }
     }
-  }
 
-  if (properties.Due) {
-    notionProps['Due'] = {
-      date: { start: properties.Due }
-    }
-  }
+    const response = await client.databases.query(queryParams)
 
-  if (properties.Notes) {
-    notionProps['Notes'] = {
-      rich_text: [{ text: { content: properties.Notes } }]
-    }
-  }
+    return response.results.map(page => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = page as any
+      
+      let title = ''
+      if (p.properties?.Name?.title?.[0]?.plain_text) {
+        title = p.properties.Name.title[0].plain_text
+      }
+      
+      let status = ''
+      if (p.properties?.Status?.select?.name) {
+        status = p.properties.Status.select.name
+      }
 
-  if (properties.Source) {
-    notionProps['Source'] = {
-      rich_text: [{ text: { content: properties.Source } }]
-    }
+      return {
+        id: p.id,
+        url: p.url,
+        title,
+        status
+      }
+    })
+  } catch (error) {
+    console.error('Error querying tasks in Notion:', error)
+    return []
   }
-
-  if (properties.Confidence !== undefined) {
-    notionProps['Confidence'] = {
-      number: properties.Confidence
-    }
-  }
-
-  if (properties.Tags && properties.Tags.length > 0) {
-    notionProps['Tags'] = {
-      multi_select: properties.Tags.map(tag => ({ name: tag }))
-    }
-  }
-
-  if (properties.Effort) {
-    notionProps['Effort'] = {
-      select: { name: properties.Effort }
-    }
-  }
-
-  return notionProps
 }

@@ -124,7 +124,7 @@ async function processVoiceMessage(
 
     // 5. Interpretar intencao (OpenAI GPT)
     const parsedIntent = await parseIntent(transcription)
-    await updateEvent(eventId, { parsedIntent, status: 'parsed' })
+    await updateEvent(eventId, { parsedIntent: parsedIntent as unknown as Record<string, unknown>, status: 'parsed' })
     console.log(`[${traceId}] Intent: ${parsedIntent.intent} (confidence: ${parsedIntent.confidence})`)
 
     // 6. Verificar confianca

@@ -33,8 +33,9 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = 'a
   try {
     const client = getOpenAIClient()
     
-    // Criar File object para a API
-    const file = new File([audioBuffer], filename, { type: 'audio/ogg' })
+    // Criar File object para a API usando Uint8Array
+    const uint8Array = new Uint8Array(audioBuffer)
+    const file = new File([uint8Array], filename, { type: 'audio/ogg' })
     
     const transcription = await client.audio.transcriptions.create({
       model: 'whisper-1',
@@ -190,7 +191,7 @@ function validateAndNormalize(data: Partial<ParsedIntent>): ParsedIntent {
     title_guess: data.task_ref?.title_guess || null
   }
 
-  const fields = data.fields || {}
+  const fields = (data.fields || {}) as Partial<ParsedIntent['fields']>
   
   return {
     intent: intent as ParsedIntent['intent'],
@@ -202,7 +203,7 @@ function validateAndNormalize(data: Partial<ParsedIntent>): ParsedIntent {
       due_date: isValidDate(fields.due_date) ? fields.due_date : null,
       tags: Array.isArray(fields.tags) ? fields.tags : [],
       effort: validEffort.includes(fields.effort as string) ? fields.effort as ParsedIntent['fields']['effort'] : null,
-      status: validStatus.includes(fields.status as string) ? fields.status : null
+      status: validStatus.includes(fields.status as string) ? (fields.status as string | null) : null
     }
   }
 }
