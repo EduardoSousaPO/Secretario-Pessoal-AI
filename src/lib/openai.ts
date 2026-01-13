@@ -60,8 +60,6 @@ export interface ParsedIntent {
   fields: {
     title: string | null
     notes: string | null
-    importance: 'High' | 'Medium' | 'Low' | null
-    urgency: 'High' | 'Medium' | 'Low' | null
     due_date: string | null
     tags: string[]
     effort: 'S' | 'M' | 'L' | null
@@ -69,8 +67,8 @@ export interface ParsedIntent {
   }
 }
 
-// Prompt do sistema para o parser (OpenAI-First)
-const SYSTEM_PROMPT = `Voce e um parser de comandos de voz para um sistema de gestao de tarefas.
+// Prompt do sistema para o parser (OpenAI-First) - Kanban Simples
+const SYSTEM_PROMPT = `Voce e um parser de comandos de voz para um sistema de gestao de tarefas com Kanban simples.
 
 Sua funcao e analisar a transcricao de um audio e extrair a intencao e os campos relevantes.
 
@@ -82,25 +80,29 @@ Sua funcao e analisar a transcricao de um audio e extrair a intencao e os campos
 - noop: nenhuma acao clara (pedir reformulacao)
 
 ## Regras de interpretacao:
-- "criar tarefa X" / "nova tarefa X" => create_task
-- "atualizar tarefa X para..." => update_task
-- "marcar tarefa X como concluida" / "concluir X" / "feito X" => complete_task
-- "minhas tarefas" / "pendencias" / "o que tenho" => list_tasks
+- "criar tarefa X" / "nova tarefa X" / "adicionar tarefa X" => create_task
+- "atualizar tarefa X para..." / "mover tarefa X para..." => update_task
+- "marcar tarefa X como concluida" / "concluir X" / "feito X" / "finalizar X" => complete_task
+- "minhas tarefas" / "pendencias" / "o que tenho" / "listar tarefas" => list_tasks
 - Se nao conseguir identificar claramente => noop
+
+## Status do Kanban (colunas):
+- "Backlog": tarefas novas, a fazer (PADRAO para criar tarefa)
+- "Em Andamento": tarefas em progresso
+- "Pausado": tarefas pausadas/paradas
+- "Concluido": tarefas finalizadas
 
 ## Extracao de campos:
 1. Extraia o titulo da tarefa de forma concisa e clara
-2. Se mencionar "importante", marque importance="High"
-3. Se mencionar "urgente", marque urgency="High"
-4. Se mencionar data (amanha, segunda, dia X), converta para YYYY-MM-DD
-5. Se mencionar tags (trabalho, pessoal, financeiro), extraia em "tags"
-6. Se mencionar esforco (rapido/pequeno=S, medio=M, grande/demorado=L), extraia em "effort"
+2. Se mencionar data (amanha, segunda, dia X), converta para YYYY-MM-DD
+3. Se mencionar tags (trabalho, pessoal, financeiro), extraia em "tags"
+4. Se mencionar esforco (rapido/pequeno=S, medio=M, grande/demorado=L), extraia em "effort"
+5. Se mencionar status (backlog, em andamento, pausado, concluido), extraia em "status"
 
-## Valores validos (CANONICOS):
-- importance: "High" | "Medium" | "Low" | null
-- urgency: "High" | "Medium" | "Low" | null
+## Valores validos:
 - effort: "S" | "M" | "L" | null
-- status: "DO (Agora)" | "DECIDE (Agendar)" | "DELEGATE (Delegar)" | "DELETE (Eliminar)" | "DONE" | null
+- status: "Backlog" | "Em Andamento" | "Pausado" | "Concluido" | null
+- tags: ["Trabalho", "Pessoal", "Financeiro", "Saude", "Estudos"]
 
 ## Confidence:
 - 90-100: Comando muito claro e especifico
@@ -119,12 +121,10 @@ Sua funcao e analisar a transcricao de um audio e extrair a intencao e os campos
   "fields": {
     "title": "string|null",
     "notes": "string|null",
-    "importance": "High|Medium|Low|null",
-    "urgency": "High|Medium|Low|null",
     "due_date": "YYYY-MM-DD|null",
     "tags": ["string"],
     "effort": "S|M|L|null",
-    "status": "DO (Agora)|DECIDE (Agendar)|DELEGATE (Delegar)|DELETE (Eliminar)|DONE|null"
+    "status": "Backlog|Em Andamento|Pausado|Concluido|null"
   }
 }
 
@@ -176,10 +176,8 @@ export async function parseIntent(transcription: string): Promise<ParsedIntent> 
  */
 function validateAndNormalize(data: Partial<ParsedIntent>): ParsedIntent {
   const validIntents = ['create_task', 'update_task', 'complete_task', 'list_tasks', 'noop']
-  const validImportance = ['High', 'Medium', 'Low', null]
-  const validUrgency = ['High', 'Medium', 'Low', null]
   const validEffort = ['S', 'M', 'L', null]
-  const validStatus = ['DO (Agora)', 'DECIDE (Agendar)', 'DELEGATE (Delegar)', 'DELETE (Eliminar)', 'DONE', null]
+  const validStatus = ['Backlog', 'Em Andamento', 'Pausado', 'Concluido', null]
 
   // Garantir campos obrigatorios
   const intent = validIntents.includes(data.intent as string) ? data.intent! : 'noop'
@@ -201,8 +199,6 @@ function validateAndNormalize(data: Partial<ParsedIntent>): ParsedIntent {
     fields: {
       title: fields.title || null,
       notes: fields.notes || null,
-      importance: validImportance.includes(fields.importance as string) ? fields.importance as ParsedIntent['fields']['importance'] : null,
-      urgency: validUrgency.includes(fields.urgency as string) ? fields.urgency as ParsedIntent['fields']['urgency'] : null,
       due_date: isValidDate(fields.due_date) ? fields.due_date : null,
       tags: Array.isArray(fields.tags) ? fields.tags : [],
       effort: validEffort.includes(fields.effort as string) ? fields.effort as ParsedIntent['fields']['effort'] : null,
@@ -224,8 +220,6 @@ function createNoopResponse(reason: string): ParsedIntent {
     fields: {
       title: null,
       notes: reason,
-      importance: null,
-      urgency: null,
       due_date: null,
       tags: [],
       effort: null,

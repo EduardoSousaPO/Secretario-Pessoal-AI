@@ -1,148 +1,119 @@
 /**
- * Testes para o classificador Eisenhower
+ * Testes para o modulo de Status do Kanban
  */
 
 import { describe, it, expect } from 'vitest'
 import { 
-  classify, 
-  getStatus, 
-  getEisenhowerFromStatus, 
-  classifyWithStatus 
+  getDefaultStatus, 
+  isValidStatus, 
+  normalizeStatus,
+  VALID_STATUSES,
+  DEFAULT_STATUS
 } from '../lib/eisenhower'
 
-describe('Eisenhower Classifier', () => {
-  describe('classify', () => {
-    it('should return Do for High importance and High urgency', () => {
-      expect(classify('High', 'High')).toBe('Do')
+describe('Kanban Status', () => {
+  describe('VALID_STATUSES', () => {
+    it('should have exactly 4 statuses', () => {
+      expect(VALID_STATUSES).toHaveLength(4)
     })
 
-    it('should return Do for High importance and Medium urgency', () => {
-      expect(classify('High', 'Medium')).toBe('Do')
-    })
-
-    it('should return Do for Medium importance and High urgency', () => {
-      expect(classify('Medium', 'High')).toBe('Do')
-    })
-
-    it('should return Do for Medium importance and Medium urgency', () => {
-      expect(classify('Medium', 'Medium')).toBe('Do')
-    })
-
-    it('should return Decide for High importance and Low urgency', () => {
-      expect(classify('High', 'Low')).toBe('Decide')
-    })
-
-    it('should return Decide for High importance and null urgency', () => {
-      expect(classify('High', null)).toBe('Decide')
-    })
-
-    it('should return Decide for Medium importance and Low urgency', () => {
-      expect(classify('Medium', 'Low')).toBe('Decide')
-    })
-
-    it('should return Decide for Medium importance and null urgency', () => {
-      expect(classify('Medium', null)).toBe('Decide')
-    })
-
-    it('should return Delegate for Low importance and High urgency', () => {
-      expect(classify('Low', 'High')).toBe('Delegate')
-    })
-
-    it('should return Delegate for Low importance and Medium urgency', () => {
-      expect(classify('Low', 'Medium')).toBe('Delegate')
-    })
-
-    it('should return Delegate for null importance and High urgency', () => {
-      expect(classify(null, 'High')).toBe('Delegate')
-    })
-
-    it('should return Delegate for null importance and Medium urgency', () => {
-      expect(classify(null, 'Medium')).toBe('Delegate')
-    })
-
-    it('should return Delete for Low importance and Low urgency', () => {
-      expect(classify('Low', 'Low')).toBe('Delete')
-    })
-
-    it('should return Delete for null importance and null urgency', () => {
-      expect(classify(null, null)).toBe('Delete')
-    })
-
-    it('should return Delete for Low importance and null urgency', () => {
-      expect(classify('Low', null)).toBe('Delete')
-    })
-
-    it('should return Delete for null importance and Low urgency', () => {
-      expect(classify(null, 'Low')).toBe('Delete')
+    it('should contain all expected statuses', () => {
+      expect(VALID_STATUSES).toContain('Backlog')
+      expect(VALID_STATUSES).toContain('Em Andamento')
+      expect(VALID_STATUSES).toContain('Pausado')
+      expect(VALID_STATUSES).toContain('Concluido')
     })
   })
 
-  describe('getStatus', () => {
-    it('should return canonical status for Do', () => {
-      expect(getStatus('Do')).toBe('DO (Agora)')
-    })
-
-    it('should return canonical status for Decide', () => {
-      expect(getStatus('Decide')).toBe('DECIDE (Agendar)')
-    })
-
-    it('should return canonical status for Delegate', () => {
-      expect(getStatus('Delegate')).toBe('DELEGATE (Delegar)')
-    })
-
-    it('should return canonical status for Delete', () => {
-      expect(getStatus('Delete')).toBe('DELETE (Eliminar)')
+  describe('DEFAULT_STATUS', () => {
+    it('should be Backlog', () => {
+      expect(DEFAULT_STATUS).toBe('Backlog')
     })
   })
 
-  describe('getEisenhowerFromStatus', () => {
-    it('should return Do for DO (Agora)', () => {
-      expect(getEisenhowerFromStatus('DO (Agora)')).toBe('Do')
-    })
-
-    it('should return Decide for DECIDE (Agendar)', () => {
-      expect(getEisenhowerFromStatus('DECIDE (Agendar)')).toBe('Decide')
-    })
-
-    it('should return Delegate for DELEGATE (Delegar)', () => {
-      expect(getEisenhowerFromStatus('DELEGATE (Delegar)')).toBe('Delegate')
-    })
-
-    it('should return Delete for DELETE (Eliminar)', () => {
-      expect(getEisenhowerFromStatus('DELETE (Eliminar)')).toBe('Delete')
-    })
-
-    it('should return null for DONE', () => {
-      expect(getEisenhowerFromStatus('DONE')).toBeNull()
-    })
-
-    it('should return null for unknown status', () => {
-      expect(getEisenhowerFromStatus('Unknown')).toBeNull()
+  describe('getDefaultStatus', () => {
+    it('should return Backlog', () => {
+      expect(getDefaultStatus()).toBe('Backlog')
     })
   })
 
-  describe('classifyWithStatus', () => {
-    it('should return both eisenhower and status', () => {
-      const result = classifyWithStatus('High', 'High')
-      expect(result.eisenhower).toBe('Do')
-      expect(result.status).toBe('DO (Agora)')
+  describe('isValidStatus', () => {
+    it('should return true for valid statuses', () => {
+      expect(isValidStatus('Backlog')).toBe(true)
+      expect(isValidStatus('Em Andamento')).toBe(true)
+      expect(isValidStatus('Pausado')).toBe(true)
+      expect(isValidStatus('Concluido')).toBe(true)
     })
 
-    it('should work for all quadrants', () => {
-      expect(classifyWithStatus('High', 'Low')).toEqual({
-        eisenhower: 'Decide',
-        status: 'DECIDE (Agendar)'
-      })
+    it('should return false for invalid statuses', () => {
+      expect(isValidStatus('Invalid')).toBe(false)
+      expect(isValidStatus('backlog')).toBe(false) // case sensitive
+      expect(isValidStatus('')).toBe(false)
+      expect(isValidStatus('Done')).toBe(false)
+    })
+  })
 
-      expect(classifyWithStatus('Low', 'High')).toEqual({
-        eisenhower: 'Delegate',
-        status: 'DELEGATE (Delegar)'
-      })
+  describe('normalizeStatus', () => {
+    it('should return default for null/undefined', () => {
+      expect(normalizeStatus(null)).toBe('Backlog')
+      expect(normalizeStatus(undefined)).toBe('Backlog')
+      expect(normalizeStatus('')).toBe('Backlog')
+    })
 
-      expect(classifyWithStatus('Low', 'Low')).toEqual({
-        eisenhower: 'Delete',
-        status: 'DELETE (Eliminar)'
-      })
+    it('should normalize Backlog variations', () => {
+      expect(normalizeStatus('backlog')).toBe('Backlog')
+      expect(normalizeStatus('back log')).toBe('Backlog')
+      expect(normalizeStatus('a fazer')).toBe('Backlog')
+      expect(normalizeStatus('to do')).toBe('Backlog')
+      expect(normalizeStatus('todo')).toBe('Backlog')
+      expect(normalizeStatus('novo')).toBe('Backlog')
+      expect(normalizeStatus('nova')).toBe('Backlog')
+    })
+
+    it('should normalize Em Andamento variations', () => {
+      expect(normalizeStatus('em andamento')).toBe('Em Andamento')
+      expect(normalizeStatus('andamento')).toBe('Em Andamento')
+      expect(normalizeStatus('em progresso')).toBe('Em Andamento')
+      expect(normalizeStatus('fazendo')).toBe('Em Andamento')
+      expect(normalizeStatus('doing')).toBe('Em Andamento')
+      expect(normalizeStatus('in progress')).toBe('Em Andamento')
+    })
+
+    it('should normalize Pausado variations', () => {
+      expect(normalizeStatus('pausado')).toBe('Pausado')
+      expect(normalizeStatus('pausada')).toBe('Pausado')
+      expect(normalizeStatus('parado')).toBe('Pausado')
+      expect(normalizeStatus('parada')).toBe('Pausado')
+      expect(normalizeStatus('on hold')).toBe('Pausado')
+    })
+
+    it('should normalize Concluido variations', () => {
+      expect(normalizeStatus('concluido')).toBe('Concluido')
+      expect(normalizeStatus('concluida')).toBe('Concluido')
+      expect(normalizeStatus('feito')).toBe('Concluido')
+      expect(normalizeStatus('feita')).toBe('Concluido')
+      expect(normalizeStatus('done')).toBe('Concluido')
+      expect(normalizeStatus('finalizado')).toBe('Concluido')
+      expect(normalizeStatus('finalizada')).toBe('Concluido')
+      expect(normalizeStatus('completo')).toBe('Concluido')
+      expect(normalizeStatus('completa')).toBe('Concluido')
+    })
+
+    it('should return default for unknown values', () => {
+      expect(normalizeStatus('unknown')).toBe('Backlog')
+      expect(normalizeStatus('xyz')).toBe('Backlog')
+    })
+
+    it('should handle whitespace', () => {
+      expect(normalizeStatus('  backlog  ')).toBe('Backlog')
+      expect(normalizeStatus('  em andamento  ')).toBe('Em Andamento')
+    })
+
+    it('should be case insensitive', () => {
+      expect(normalizeStatus('BACKLOG')).toBe('Backlog')
+      expect(normalizeStatus('EM ANDAMENTO')).toBe('Em Andamento')
+      expect(normalizeStatus('PAUSADO')).toBe('Pausado')
+      expect(normalizeStatus('CONCLUIDO')).toBe('Concluido')
     })
   })
 })

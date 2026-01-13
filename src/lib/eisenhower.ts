@@ -1,86 +1,76 @@
 /**
- * Classificador da Matriz de Eisenhower
+ * Status do Kanban para o AI Secretary
  * 
- * Mapeia combinacoes de Importancia e Urgencia para os quadrantes
- * (docs/04_DATA_MODEL.md - 4.6):
- * 
- * - Do        -> "DO (Agora)"       : Importante + Urgente
- * - Decide    -> "DECIDE (Agendar)" : Importante + Nao Urgente
- * - Delegate  -> "DELEGATE (Delegar)": Nao Importante + Urgente
- * - Delete    -> "DELETE (Eliminar)": Nao Importante + Nao Urgente
- * 
- * IMPORTANTE: Os status sao CANONICOS (docs/04_DATA_MODEL.md)
- * Este e um mapeamento DETERMINISTICO, nao requer interpretacao
+ * Colunas simples (docs/04_DATA_MODEL.md):
+ * - Backlog: Tarefas a fazer
+ * - Em Andamento: Tarefas em progresso
+ * - Pausado: Tarefas pausadas
+ * - Concluido: Tarefas finalizadas
  */
 
-export type EisenhowerQuadrant = 'Do' | 'Decide' | 'Delegate' | 'Delete'
-export type KanbanStatus = 'DO (Agora)' | 'DECIDE (Agendar)' | 'DELEGATE (Delegar)' | 'DELETE (Eliminar)' | 'DONE'
-export type ImportanceLevel = 'High' | 'Medium' | 'Low' | null
-export type UrgencyLevel = 'High' | 'Medium' | 'Low' | null
+export type KanbanStatus = 'Backlog' | 'Em Andamento' | 'Pausado' | 'Concluido'
 
-// Mapeamento Eisenhower -> Status do Kanban (CANONICO - docs/04_DATA_MODEL.md - 4.6)
-const STATUS_MAP: Record<EisenhowerQuadrant, KanbanStatus> = {
-  'Do': 'DO (Agora)',
-  'Decide': 'DECIDE (Agendar)',
-  'Delegate': 'DELEGATE (Delegar)',
-  'Delete': 'DELETE (Eliminar)'
+// Status validos (CANONICO)
+export const VALID_STATUSES: KanbanStatus[] = ['Backlog', 'Em Andamento', 'Pausado', 'Concluido']
+
+// Status padrao para novas tarefas
+export const DEFAULT_STATUS: KanbanStatus = 'Backlog'
+
+/**
+ * Retorna o status padrao para novas tarefas
+ */
+export function getDefaultStatus(): KanbanStatus {
+  return DEFAULT_STATUS
 }
 
 /**
- * Classifica uma tarefa na Matriz de Eisenhower
- * 
- * Logica:
- * - High = considerado como "sim"
- * - Medium = considerado como "sim" (para nao perder tarefas)
- * - Low/null = considerado como "nao"
+ * Valida se um status e valido
  */
-export function classify(importance: ImportanceLevel, urgency: UrgencyLevel): EisenhowerQuadrant {
-  // Determinar se e importante (High ou Medium = sim)
-  const isImportant = importance === 'High' || importance === 'Medium'
+export function isValidStatus(status: string): status is KanbanStatus {
+  return VALID_STATUSES.includes(status as KanbanStatus)
+}
+
+/**
+ * Normaliza o status (caso venha com variações)
+ */
+export function normalizeStatus(status: string | null | undefined): KanbanStatus {
+  if (!status) return DEFAULT_STATUS
   
-  // Determinar se e urgente (High ou Medium = sim)
-  const isUrgent = urgency === 'High' || urgency === 'Medium'
+  const normalized = status.toLowerCase().trim()
   
-  // Matriz de Eisenhower
-  if (isImportant && isUrgent) {
-    return 'Do'  // Fazer agora
-  } else if (isImportant && !isUrgent) {
-    return 'Decide'  // Agendar
-  } else if (!isImportant && isUrgent) {
-    return 'Delegate'  // Delegar
-  } else {
-    return 'Delete'  // Eliminar/Baixa prioridade
+  // Mapeamento de variações comuns
+  const statusMap: Record<string, KanbanStatus> = {
+    'backlog': 'Backlog',
+    'back log': 'Backlog',
+    'a fazer': 'Backlog',
+    'to do': 'Backlog',
+    'todo': 'Backlog',
+    'novo': 'Backlog',
+    'nova': 'Backlog',
+    
+    'em andamento': 'Em Andamento',
+    'andamento': 'Em Andamento',
+    'em progresso': 'Em Andamento',
+    'fazendo': 'Em Andamento',
+    'doing': 'Em Andamento',
+    'in progress': 'Em Andamento',
+    
+    'pausado': 'Pausado',
+    'pausada': 'Pausado',
+    'parado': 'Pausado',
+    'parada': 'Pausado',
+    'on hold': 'Pausado',
+    
+    'concluido': 'Concluido',
+    'concluida': 'Concluido',
+    'feito': 'Concluido',
+    'feita': 'Concluido',
+    'done': 'Concluido',
+    'finalizado': 'Concluido',
+    'finalizada': 'Concluido',
+    'completo': 'Concluido',
+    'completa': 'Concluido'
   }
-}
-
-/**
- * Converte quadrante Eisenhower para status do Kanban
- */
-export function getStatus(eisenhower: EisenhowerQuadrant): KanbanStatus {
-  return STATUS_MAP[eisenhower] || 'DO (Agora)'
-}
-
-/**
- * Converte status do Kanban para quadrante Eisenhower
- */
-export function getEisenhowerFromStatus(status: string): EisenhowerQuadrant | null {
-  const reverseMap: Record<string, EisenhowerQuadrant> = {
-    'DO (Agora)': 'Do',
-    'DECIDE (Agendar)': 'Decide',
-    'DELEGATE (Delegar)': 'Delegate',
-    'DELETE (Eliminar)': 'Delete'
-  }
-  return reverseMap[status] || null
-}
-
-/**
- * Classifica e retorna tanto o quadrante quanto o status
- */
-export function classifyWithStatus(
-  importance: ImportanceLevel,
-  urgency: UrgencyLevel
-): { eisenhower: EisenhowerQuadrant; status: KanbanStatus } {
-  const eisenhower = classify(importance, urgency)
-  const status = getStatus(eisenhower)
-  return { eisenhower, status }
+  
+  return statusMap[normalized] || DEFAULT_STATUS
 }

@@ -145,25 +145,40 @@ CREATE POLICY "Service role full access on tasks_map"
 
 Database: "Tasks — AI Secretary"
 
-Propriedades:
-- Name (title)                      -> titulo da tarefa
-- Status (select)                   -> coluna do Kanban
-- Eisenhower (select)               -> Do | Decide | Delegate | Delete
-- Importance (select)               -> High | Medium | Low
-- Urgency (select)                  -> High | Medium | Low
-- Due (date)                        -> prazo (opcional)
-- Notes (rich_text)                 -> descricao livre
-- Source (rich_text)                -> "telegram:chat_id:message_id"
-- Confidence (number)               -> 0-100 (confianca do parser)
-- Tags (multi_select)               -> ex: Financeiro, Familia, Trabalho
-- Effort (select)                   -> S | M | L (opcional)
+### Propriedades:
+
+| Propriedade | Tipo | Descricao | Valores |
+|-------------|------|-----------|---------|
+| Name | title | Titulo da tarefa | texto livre |
+| Status | select | Coluna do Kanban | Backlog, Em Andamento, Pausado, Concluido |
+| Due | date | Prazo (opcional) | data |
+| Notes | rich_text | Descricao livre | texto |
+| Source | rich_text | Origem | "telegram:chat_id:message_id" |
+| Confidence | number | Confianca do parser | 0-100 |
+| Tags | multi_select | Categorias | Trabalho, Pessoal, Financeiro, Saude, Estudos |
+| Effort | select | Esforco estimado | S, M, L |
 
 ---
 
-## 4.6 Mapeamento Eisenhower -> Status (Kanban)
+## 4.6 Status do Kanban (Colunas)
 
-- Do        -> "DO (Agora)"
-- Decide    -> "DECIDE (Agendar)"
-- Delegate  -> "DELEGATE (Delegar)"
-- Delete    -> "DELETE (Eliminar)"
-- Done      -> "DONE"
+O sistema usa um Kanban simples com 4 colunas:
+
+| Status | Cor | Descricao |
+|--------|-----|-----------|
+| Backlog | ⚪ Cinza | Tarefas novas, a fazer |
+| Em Andamento | 🔵 Azul | Tarefas em progresso |
+| Pausado | 🟡 Amarelo | Tarefas pausadas/paradas |
+| Concluido | 🟢 Verde | Tarefas finalizadas |
+
+### Fluxo tipico:
+```
+Backlog → Em Andamento → Concluido
+              ↓
+           Pausado
+```
+
+### Regras:
+- Novas tarefas sao criadas em **Backlog** por padrao
+- O usuario pode mover manualmente no Notion ou via comando de voz
+- Tarefas concluidas ficam em **Concluido**

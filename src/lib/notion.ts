@@ -6,7 +6,13 @@
  * - Atualizar propriedades de paginas
  * - Consultar database (buscar tarefas)
  * 
- * IMPORTANTE: Usa nomes de propriedades CANONICOS (docs/04_DATA_MODEL.md - 4.5)
+ * IMPORTANTE: Usa nomes de propriedades CANONICOS (docs/04_DATA_MODEL.md)
+ * 
+ * Kanban Simples:
+ * - Backlog
+ * - Em Andamento
+ * - Pausado
+ * - Concluido
  */
 
 import { Client } from '@notionhq/client'
@@ -34,13 +40,10 @@ function getDatabaseId(): string {
   return id
 }
 
-// Propriedades canonicas (docs/04_DATA_MODEL.md - 4.5)
+// Propriedades canonicas (docs/04_DATA_MODEL.md)
 export interface TaskProperties {
   Name: string
   Status?: string
-  Eisenhower?: string
-  Importance?: string
-  Urgency?: string
   Due?: string
   Notes?: string
   Source?: string
@@ -167,7 +170,7 @@ export async function queryTasks(params?: {
 }
 
 /**
- * Busca tarefas pendentes (Status != DONE)
+ * Busca tarefas pendentes (Status != Concluido)
  */
 export async function getPendingTasks(limit: number = 5): Promise<Array<{ id: string; url: string; title: string; status: string }>> {
   try {
@@ -178,7 +181,7 @@ export async function getPendingTasks(limit: number = 5): Promise<Array<{ id: st
       database_id: databaseId,
       filter: {
         property: 'Status',
-        select: { does_not_equal: 'DONE' }
+        select: { does_not_equal: 'Concluido' }
       },
       page_size: limit
     }) as QueryDatabaseResponse
@@ -227,24 +230,6 @@ function mapToNotionProperties(properties: Partial<TaskProperties>): Record<stri
   if (properties.Status) {
     notionProps['Status'] = {
       select: { name: properties.Status }
-    }
-  }
-
-  if (properties.Eisenhower) {
-    notionProps['Eisenhower'] = {
-      select: { name: properties.Eisenhower }
-    }
-  }
-
-  if (properties.Importance) {
-    notionProps['Importance'] = {
-      select: { name: properties.Importance }
-    }
-  }
-
-  if (properties.Urgency) {
-    notionProps['Urgency'] = {
-      select: { name: properties.Urgency }
     }
   }
 

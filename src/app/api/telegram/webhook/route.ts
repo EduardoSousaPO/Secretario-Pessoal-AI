@@ -11,7 +11,7 @@
  * 5. Executa acao no Notion
  * 6. Responde no Telegram
  * 
- * PRINCIPIO OPENAI-FIRST: Toda interpretacao e delegada a OpenAI
+ * KANBAN SIMPLES: Backlog -> Em Andamento -> Pausado -> Concluido
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -32,9 +32,9 @@ import {
   getTaskByTitle,
   getTaskByPageId
 } from '@/lib/supabase'
-import { transcribeAudio, parseIntent, isConfidenceSufficient, CONFIDENCE_THRESHOLD } from '@/lib/openai'
-import { classifyWithStatus, getEisenhowerFromStatus } from '@/lib/eisenhower'
-import { createTask, updateTask, getPendingTasks, queryTasks } from '@/lib/notion'
+import { transcribeAudio, parseIntent, isConfidenceSufficient } from '@/lib/openai'
+import { getDefaultStatus, normalizeStatus } from '@/lib/eisenhower'
+import { createTask, updateTask, getPendingTasks } from '@/lib/notion'
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,29 +42,26 @@ export async function POST(request: NextRequest) {
     const secretHeader = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
     if (!validateWebhookSecret(secretHeader)) {
       console.warn('Invalid webhook secret')
-      return NextResponse.json({ ok: true }) // Retorna 200 para nao gerar retries
+      return NextResponse.json({ ok: true })
     }
 
     const update = await request.json() as TelegramUpdate
     
-    // Ignorar updates sem mensagem
     if (!update.message) {
       return NextResponse.json({ ok: true })
     }
 
     const message = update.message
     const chatId = message.chat.id
-    const messageId = message.message_id
     const userId = message.from?.id
 
     // Verificar se e mensagem de audio
     const audioData = extractAudioData(message)
     if (!audioData) {
-      // Ignorar mensagens sem audio (nao e erro)
       return NextResponse.json({ ok: true })
     }
 
-    // Verificar usuario autorizado (docs/08_SECURITY_PRIVACY.md)
+    // Verificar usuario autorizado
     if (userId && !isUserAllowed(userId)) {
       console.log(`User ${userId} not allowed`)
       return NextResponse.json({ ok: true })
@@ -76,7 +73,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Webhook error:', error)
-    // Retornar 200 para evitar retries do Telegram
     return NextResponse.json({ ok: true })
   }
 }
@@ -89,7 +85,7 @@ async function processVoiceMessage(
   const messageId = message.message_id
   const userId = message.from?.id
 
-  // 1. Verificar idempotencia (docs/RULES.md R3)
+  // 1. Verificar idempotencia
   const exists = await eventExists(String(chatId), String(messageId))
   if (exists) {
     console.log(`Event already exists for chat=${chatId}, message=${messageId}`)
@@ -105,10 +101,7 @@ async function processVoiceMessage(
     audioDurationSec: audioData.duration
   })
 
-  if (!event) {
-    // Provavelmente ja existe (constraint violation)
-    return
-  }
+  if (!event) return
 
   const { id: eventId, traceId } = event
   console.log(`[${traceId}] Processing voice message from chat=${chatId}`)
@@ -126,21 +119,15 @@ async function processVoiceMessage(
       throw new Error('Failed to transcribe audio')
     }
 
-    await updateEvent(eventId, { 
-      transcription, 
-      status: 'transcribed' 
-    })
+    await updateEvent(eventId, { transcription, status: 'transcribed' })
     console.log(`[${traceId}] Transcription: ${transcription.substring(0, 100)}...`)
 
-    // 5. Interpretar intencao (OpenAI GPT) - OPENAI-FIRST
+    // 5. Interpretar intencao (OpenAI GPT)
     const parsedIntent = await parseIntent(transcription)
-    await updateEvent(eventId, { 
-      parsedIntent, 
-      status: 'parsed' 
-    })
+    await updateEvent(eventId, { parsedIntent, status: 'parsed' })
     console.log(`[${traceId}] Intent: ${parsedIntent.intent} (confidence: ${parsedIntent.confidence})`)
 
-    // 6. Verificar confianca (docs/RULES.md R4)
+    // 6. Verificar confianca
     if (!isConfidenceSufficient(parsedIntent)) {
       const response = `Nao entendi bem sua intencao (confianca: ${parsedIntent.confidence}%). ` +
         `Por favor, tente reformular.\n\n_Transcricao: "${transcription.substring(0, 100)}..."_`
@@ -153,10 +140,9 @@ async function processVoiceMessage(
       return
     }
 
-    // 7. Executar acao baseada na intencao
+    // 7. Executar acao
     const result = await executeIntent(parsedIntent, chatId, messageId, transcription, traceId)
     
-    // 8. Atualizar evento e responder
     await updateEvent(eventId, {
       notionAction: result.notionAction,
       status: 'synced'
@@ -191,20 +177,12 @@ async function executeIntent(
 
   switch (intent.intent) {
     case 'create_task': {
-      // Classificar Eisenhower (mapeamento deterministico)
-      const { eisenhower, status } = classifyWithStatus(
-        fields.importance,
-        fields.urgency
-      )
-
       const taskTitle = fields.title || transcription.substring(0, 50)
+      const status = fields.status ? normalizeStatus(fields.status) : getDefaultStatus()
       
       const newPage = await createTask({
         Name: taskTitle,
         Status: status,
-        Eisenhower: eisenhower,
-        Importance: fields.importance || undefined,
-        Urgency: fields.urgency || undefined,
         Due: fields.due_date || undefined,
         Notes: fields.notes || undefined,
         Source: `telegram:${chatId}:${messageId}`,
@@ -217,7 +195,6 @@ async function executeIntent(
         throw new Error('Failed to create task in Notion')
       }
 
-      // Salvar no tasks_map
       await upsertTaskMap({
         notionPageId: newPage.id,
         taskTitle,
@@ -226,13 +203,12 @@ async function executeIntent(
       })
 
       return {
-        response: `Tarefa *"${taskTitle}"* criada na coluna *${status}*.\n[Ver no Notion](${newPage.url})`,
+        response: `✅ Tarefa *"${taskTitle}"* criada em *${status}*.\n[Ver no Notion](${newPage.url})`,
         notionAction: { action: 'create', pageId: newPage.id, url: newPage.url }
       }
     }
 
     case 'update_task': {
-      // Encontrar tarefa alvo
       let targetTask = null
       
       if (task_ref.notion_page_id) {
@@ -243,13 +219,11 @@ async function executeIntent(
 
       if (!targetTask) {
         return {
-          response: `Nao encontrei a tarefa *"${task_ref.title_guess || fields.title}"* para atualizar. ` +
-            `Por favor, seja mais especifico ou crie uma nova.`,
+          response: `❌ Nao encontrei a tarefa *"${task_ref.title_guess || fields.title}"* para atualizar.`,
           notionAction: { action: 'update_failed', reason: 'task_not_found' }
         }
       }
 
-      // Preparar atualizacoes
       const updates: Record<string, unknown> = {}
       
       if (fields.title) updates.Name = fields.title
@@ -257,26 +231,7 @@ async function executeIntent(
       if (fields.due_date) updates.Due = fields.due_date
       if (fields.tags.length > 0) updates.Tags = fields.tags
       if (fields.effort) updates.Effort = fields.effort
-      
-      // Recalcular Eisenhower se necessario
-      if (fields.importance || fields.urgency) {
-        const currentEisenhower = getEisenhowerFromStatus(targetTask.last_seen_status || '')
-        const newImportance = fields.importance || (currentEisenhower ? 'Medium' : null)
-        const newUrgency = fields.urgency || (currentEisenhower ? 'Medium' : null)
-        
-        const { eisenhower, status } = classifyWithStatus(newImportance, newUrgency)
-        updates.Eisenhower = eisenhower
-        updates.Status = status
-        if (fields.importance) updates.Importance = fields.importance
-        if (fields.urgency) updates.Urgency = fields.urgency
-      }
-
-      // Permitir update direto de status
-      if (fields.status) {
-        updates.Status = fields.status
-        const eisenhower = getEisenhowerFromStatus(fields.status)
-        if (eisenhower) updates.Eisenhower = eisenhower
-      }
+      if (fields.status) updates.Status = normalizeStatus(fields.status)
 
       const updatedPage = await updateTask(targetTask.notion_page_id, updates)
       
@@ -284,7 +239,6 @@ async function executeIntent(
         throw new Error('Failed to update task in Notion')
       }
 
-      // Atualizar tasks_map
       await upsertTaskMap({
         notionPageId: targetTask.notion_page_id,
         taskTitle: (updates.Name as string) || targetTask.task_title || undefined,
@@ -292,13 +246,12 @@ async function executeIntent(
       })
 
       return {
-        response: `Tarefa *"${targetTask.task_title}"* atualizada.\n[Ver no Notion](${updatedPage.url})`,
+        response: `✅ Tarefa *"${targetTask.task_title}"* atualizada.\n[Ver no Notion](${updatedPage.url})`,
         notionAction: { action: 'update', pageId: updatedPage.id, url: updatedPage.url }
       }
     }
 
     case 'complete_task': {
-      // Encontrar tarefa alvo
       let targetTask = null
       
       if (task_ref.notion_page_id) {
@@ -309,26 +262,24 @@ async function executeIntent(
 
       if (!targetTask) {
         return {
-          response: `Nao encontrei a tarefa *"${task_ref.title_guess || fields.title}"* para concluir. ` +
-            `Por favor, seja mais especifico.`,
+          response: `❌ Nao encontrei a tarefa *"${task_ref.title_guess || fields.title}"* para concluir.`,
           notionAction: { action: 'complete_failed', reason: 'task_not_found' }
         }
       }
 
-      const updatedPage = await updateTask(targetTask.notion_page_id, { Status: 'DONE' })
+      const updatedPage = await updateTask(targetTask.notion_page_id, { Status: 'Concluido' })
       
       if (!updatedPage) {
         throw new Error('Failed to complete task in Notion')
       }
 
-      // Atualizar tasks_map
       await upsertTaskMap({
         notionPageId: targetTask.notion_page_id,
-        lastSeenStatus: 'DONE'
+        lastSeenStatus: 'Concluido'
       })
 
       return {
-        response: `Tarefa *"${targetTask.task_title}"* marcada como concluida!\n[Ver no Notion](${updatedPage.url})`,
+        response: `🎉 Tarefa *"${targetTask.task_title}"* concluida!\n[Ver no Notion](${updatedPage.url})`,
         notionAction: { action: 'complete', pageId: updatedPage.id, url: updatedPage.url }
       }
     }
@@ -338,14 +289,20 @@ async function executeIntent(
       
       if (tasks.length === 0) {
         return {
-          response: 'Nenhuma tarefa pendente encontrada.',
+          response: '📋 Nenhuma tarefa pendente encontrada.',
           notionAction: { action: 'list', count: 0 }
         }
       }
 
-      let taskList = '*Suas tarefas pendentes:*\n\n'
+      let taskList = '📋 *Suas tarefas pendentes:*\n\n'
       for (const task of tasks) {
-        taskList += `• [${task.title}](${task.url}) - _${task.status}_\n`
+        const statusEmoji = {
+          'Backlog': '⚪',
+          'Em Andamento': '🔵',
+          'Pausado': '🟡'
+        }[task.status] || '⚪'
+        
+        taskList += `${statusEmoji} [${task.title}](${task.url}) - _${task.status}_\n`
       }
 
       return {
@@ -357,15 +314,16 @@ async function executeIntent(
     case 'noop':
     default: {
       return {
-        response: `Nao entendi sua intencao. Por favor, tente reformular.\n\n` +
-          `_Transcricao: "${transcription.substring(0, 100)}..."_`,
+        response: `❓ Nao entendi sua intencao. Tente:\n` +
+          `• "criar tarefa [nome]"\n` +
+          `• "concluir tarefa [nome]"\n` +
+          `• "minhas tarefas"`,
         notionAction: { action: 'noop' }
       }
     }
   }
 }
 
-// GET para verificar se o endpoint esta funcionando
 export async function GET() {
   return NextResponse.json({ 
     status: 'ok', 
