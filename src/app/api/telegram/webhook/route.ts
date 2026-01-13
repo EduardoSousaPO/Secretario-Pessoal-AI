@@ -180,11 +180,16 @@ async function executeIntent(
       const taskTitle = fields.title || transcription.substring(0, 50)
       const status = fields.status ? normalizeStatus(fields.status) : getDefaultStatus()
       
+      // Incluir transcrição completa nas notas para preservar detalhes
+      const notesWithTranscription = fields.notes 
+        ? `${fields.notes}\n\n---\n📝 Transcrição original:\n"${transcription}"`
+        : `📝 Transcrição original:\n"${transcription}"`
+      
       const newPage = await createTask({
         Name: taskTitle,
         Status: status,
         Due: fields.due_date || undefined,
-        Notes: fields.notes || undefined,
+        Notes: notesWithTranscription,
         Source: `telegram:${chatId}:${messageId}`,
         Confidence: intent.confidence,
         Tags: fields.tags.length > 0 ? fields.tags : undefined,
