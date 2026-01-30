@@ -82,6 +82,11 @@ export async function eventExists(chatId: string, messageId: string): Promise<bo
   return !!data
 }
 
+export type CreateEventResult =
+  | { ok: true; id: string; traceId: string }
+  | { ok: false; duplicate: true }
+  | { ok: false; duplicate: false }
+
 /**
  * Cria um novo evento
  */
@@ -91,7 +96,7 @@ export async function createEvent(params: {
   fromUserId?: string
   audioFileId?: string
   audioDurationSec?: number
-}): Promise<{ id: string; traceId: string } | null> {
+}): Promise<CreateEventResult> {
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -111,13 +116,13 @@ export async function createEvent(params: {
     // Constraint violation = evento ja existe (idempotencia)
     if (error.code === '23505') {
       console.log(`Event already exists for chat=${params.chatId}, message=${params.messageId}`)
-      return null
+      return { ok: false, duplicate: true }
     }
     console.error('Error creating event:', error)
-    return null
+    return { ok: false, duplicate: false }
   }
 
-  return { id: data.id, traceId: data.trace_id }
+  return { ok: true, id: data.id, traceId: data.trace_id }
 }
 
 /**

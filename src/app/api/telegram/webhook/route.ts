@@ -15,6 +15,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+
+// Permite ate 60s na Vercel Pro (Hobby limita a 10s) - evita timeout no Whisper+GPT+Notion
+export const maxDuration = 60
 import { 
   TelegramUpdate, 
   TelegramMessage,
@@ -93,7 +96,7 @@ async function processVoiceMessage(
   }
 
   // 2. Criar evento no Supabase
-  const event = await createEvent({
+  const eventResult = await createEvent({
     chatId: String(chatId),
     messageId: String(messageId),
     fromUserId: userId ? String(userId) : undefined,
@@ -101,9 +104,13 @@ async function processVoiceMessage(
     audioDurationSec: audioData.duration
   })
 
-  if (!event) return
+  if (!eventResult.ok) {
+    if (eventResult.duplicate) return
+    await sendMessage(chatId, 'Ocorreu um erro ao registrar sua mensagem. Tente novamente.', messageId)
+    return
+  }
 
-  const { id: eventId, traceId } = event
+  const { id: eventId, traceId } = eventResult
   console.log(`[${traceId}] Processing voice message from chat=${chatId}`)
 
   try {
